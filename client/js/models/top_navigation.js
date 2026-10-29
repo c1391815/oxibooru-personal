@@ -81,6 +81,13 @@ function _makeTopNavigation() {
     ret.add("home", new TopNavigationItem("H", "Home", ""));
     ret.add("posts", new TopNavigationItem("P", "Posts", "posts"));
     ret.add("upload", new TopNavigationItem("U", "Upload", "upload"));
+    const assistantUrl = window.OXIBOORU_ASSISTANT_URL;
+    if (assistantUrl && assistantUrl !== "__ASSISTANT_URL__") {
+        ret.add(
+            "assistant",
+            new TopNavigationItem(null, "Statistics", assistantUrl)
+        );
+    }
     ret.add("comments", new TopNavigationItem("C", "Comments", "comments"));
     ret.add("tags", new TopNavigationItem("T", "Tags", "tags"));
     ret.add("pools", new TopNavigationItem("O", "Pools", "pools"));

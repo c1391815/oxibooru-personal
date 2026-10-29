@@ -1,0 +1,60 @@
+name: Build personal client image
+
+on:
+  push:
+    branches:
+      - "personal/**"
+    tags:
+      - "client-v*"
+    paths:
+      - "client/**"
+      - ".github/workflows/personal-client.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/oxibooru-client
+          tags: |
+            type=match,pattern=client-v(.*),group=1
+            type=ref,event=branch,suffix=-edge
+            type=sha,prefix=sha-
+
+      - name: Build and publish client
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            BUILD_INFO=${{ github.ref_name }}-${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            SOURCE_COMMIT=${{ github.sha }}
+            SOURCE_REPO=${{ github.server_url }}/${{ github.repository }}
+            DOCKER_REPO=ghcr.io/${{ github.repository_owner }}/oxibooru-client
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
