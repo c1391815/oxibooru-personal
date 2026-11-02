@@ -53,6 +53,12 @@ class TopNavigationView {
     }
 
     _navigationLinkClick(e) {
+        const link = e.currentTarget;
+        if (link.closest('[data-name="assistant"]')) {
+            const url = new URL(link.href);
+            url.searchParams.set("tagUnderscoresAsSpaces", String(require("../models/settings.js").get().tagUnderscoresAsSpaces));
+            link.href = url.href;
+        }
         this._navigationListNode.classList.remove("opened");
     }
 }

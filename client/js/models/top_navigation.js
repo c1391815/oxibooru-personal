@@ -23,6 +23,12 @@ class TopNavigation extends events.EventTarget {
     }
 
     getAll() {
+        const assistant = this._keyToItem.get("assistant");
+        if (assistant) {
+            const url = new URL(window.OXIBOORU_ASSISTANT_URL, window.location.href);
+            url.searchParams.set("tagUnderscoresAsSpaces", String(require("./settings.js").get().tagUnderscoresAsSpaces));
+            assistant.url = url.href;
+        }
         return this._items;
     }
 
