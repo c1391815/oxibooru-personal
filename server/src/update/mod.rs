@@ -1,6 +1,7 @@
 pub mod pool;
 pub mod post;
 pub mod tag;
+pub mod tag_parent;
 pub mod user;
 
 // NOTE: Unless documented otherwise, the functions in this module do not check

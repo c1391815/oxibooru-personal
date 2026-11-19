@@ -5,7 +5,7 @@ use crate::config::Action;
 use crate::extract::{Ctx, DeleteBody, Json, MergeBody, PageParams, PagedResponse, Path, Query, ResourceParams};
 use crate::model::enums::ResourceType;
 use crate::model::tag::{NewTag, Tag};
-use crate::resource::tag::{Field, TagInfo};
+use crate::resource::tag::{Field, TagInfo, TagParent};
 use crate::schema::{post_tag, tag, tag_category, tag_name};
 use crate::search::Builder;
 use crate::search::tag::QueryBuilder;
@@ -377,6 +377,7 @@ async fn merge(
         .transaction({
             let ctx = ctx.clone();
             move |conn| {
+                update::tag_parent::lock(conn)?;
                 let (absorbed_id, absorbed_version) = get_tag_info(conn, &ctx, &body.remove)?;
                 let (merge_to_id, merge_to_version) = get_tag_info(conn, &ctx, &body.merge_to)?;
                 if absorbed_id == merge_to_id {
@@ -386,6 +387,7 @@ async fn merge(
                 api::verify_version(merge_to_version, body.merge_to_version)?;
 
                 update::tag::merge(conn, absorbed_id, merge_to_id)?;
+                update::tag_parent::verify_acyclic(conn)?;
                 snapshot::tag::merge_snapshot(conn, ctx.client, body.remove, &body.merge_to)?;
                 Ok::<_, ApiError>(merge_to_id)
             }
@@ -410,6 +412,9 @@ struct TagUpdateBody {
     names: Option<Vec<SmallString>>,
     /// Implied tags. Non-existent tags will be created automatically.
     implications: Option<Vec<SmallString>>,
+    /// Display hierarchy only. Does not add or remove implications.
+    #[serde(rename = "parentTag")]
+    parent_tag: Option<TagParent>,
     /// Suggested tags. Non-existent tags will be created automatically.
     suggestions: Option<Vec<SmallString>>,
 }
@@ -450,11 +455,15 @@ async fn update(
     Json(body): Json<TagUpdateBody>,
 ) -> ApiResult<Json<TagInfo>> {
     ctx.verify_privilege(Action::TagView)?;
+    let hierarchy_changed = body.category.is_some() || body.implications.is_some() || body.parent_tag.is_some();
 
     let tag_id = connection_pool
         .transaction({
             let ctx = ctx.clone();
             move |conn| {
+                if hierarchy_changed {
+                    update::tag_parent::lock(conn)?;
+                }
                 let tag_id = verify_visibility(conn, &ctx, &name)?;
                 let old_tag: Tag = tag::table
                     .find(tag_id)
@@ -510,8 +519,27 @@ async fn update(
                     new_snapshot_data.suggestions = suggestions;
                 }
 
+                if let Some(parent) = body.parent_tag {
+                    ctx.verify_privilege(Action::TagEditImplication)?;
+                    let parent = match parent {
+                        TagParent::Auto => None,
+                        TagParent::None => Some(None),
+                        TagParent::Tag { name } => {
+                            let id = verify_visibility(conn, &ctx, &name)?;
+                            let category_id: i64 = tag::table.find(id).select(tag::category_id).first(conn)?;
+                            if category_id != new_tag.category_id {
+                                return Err(ApiError::TagParentCategoryMismatch);
+                            }
+                            Some(Some(id))
+                        }
+                    };
+                    update::tag_parent::set(conn, tag_id, parent)?;
+                }
                 new_tag.last_edit_time = DateTime::now();
                 let _: Tag = new_tag.save_changes(conn)?;
+                if hierarchy_changed {
+                    update::tag_parent::verify_acyclic(conn)?;
+                }
                 snapshot::tag::modification_snapshot(conn, ctx.client, old_snapshot_data, new_snapshot_data)?;
                 Ok::<_, ApiError>(tag_id)
             }
@@ -550,6 +578,7 @@ async fn delete(
 
     connection_pool
         .transaction(move |conn| {
+            update::tag_parent::lock(conn)?;
             let tag_id = verify_visibility(conn, &ctx, &name)?;
             let tag: Tag = tag::table
                 .find(tag_id)
@@ -563,6 +592,7 @@ async fn delete(
             snapshot::tag::deletion_snapshot(conn, ctx.client, tag_data)?;
 
             diesel::delete(tag::table.find(tag_id)).execute(conn)?;
+            update::tag_parent::verify_acyclic(conn)?;
             Ok::<_, ApiError>(Json(()))
         })
         .await

@@ -4,11 +4,12 @@ use crate::resource::field::{Batcher, Mask};
 use crate::schema::{tag, tag_category, tag_implication, tag_name, tag_statistics, tag_suggestion};
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
+use diesel::sql_types::{Array, BigInt, Nullable, Text};
 use diesel::{
     BelongingToDsl, ExpressionMethods, GroupedBy, Identifiable, JoinOnDsl, PgConnection, QueryDsl, QueryResult,
-    RunQueryDsl, SelectableHelper,
+    QueryableByName, RunQueryDsl, SelectableHelper, sql_query,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use server_macros::non_nullable_options;
 use std::collections::{HashMap, HashSet};
@@ -39,6 +40,7 @@ pub enum Field {
     Category,
     Names,
     Implications,
+    ParentTag,
     Suggestions,
     Usages,
 }
@@ -69,6 +71,8 @@ pub struct TagInfo {
     names: Option<Vec<SmallString>>,
     /// A list of implied tags. Implied tags are automatically appended by the web client on usage.
     implications: Option<Vec<MicroTag>>,
+    /// The tag used for display indentation. Automatic mode uses a single implication.
+    parent_tag: Option<TagParent>,
     /// A list of suggested tags. Suggested tags are shown to the user by the web client on usage.
     suggestions: Option<Vec<MicroTag>>,
     /// The number of posts the tag was used in.
@@ -89,6 +93,12 @@ impl TagInfo {
         let mut categories = f.exec(Field::Category, || get_categories(conn, &tags))?;
         let mut names = f.exec(Field::Names, || get_names(conn, &tags))?;
         let mut implications = f.exec(Field::Implications, || get_implications(conn, &tags))?;
+        // Keep the existing default response; hierarchy clients request this field explicitly.
+        let mut parent_tags = if fields.is_all() {
+            Vec::new()
+        } else {
+            f.exec(Field::ParentTag, || get_parent_tags(conn, &tags))?
+        };
         let mut suggestions = f.exec(Field::Suggestions, || get_suggestions(conn, &tags))?;
         let mut usages = f.exec(Field::Usages, || get_usages(conn, &tags))?;
 
@@ -103,6 +113,7 @@ impl TagInfo {
                 category: categories.pop(),
                 names: names.pop(),
                 implications: implications.pop(),
+                parent_tag: parent_tags.pop(),
                 suggestions: suggestions.pop(),
                 usages: usages.pop(),
             })
@@ -116,6 +127,43 @@ impl TagInfo {
         let tags = resource::order_as(unordered_tags, tag_ids);
         Self::new_batch(conn, tags, fields)
     }
+}
+
+#[derive(Deserialize, Serialize, ToSchema)]
+#[serde(tag = "mode", rename_all = "camelCase")]
+pub enum TagParent {
+    Auto,
+    None,
+    Tag { name: SmallString },
+}
+
+#[derive(QueryableByName)]
+struct ParentTagRow {
+    #[diesel(sql_type = BigInt)]
+    tag_id: i64,
+    #[diesel(sql_type = Nullable<Text>)]
+    name: Option<SmallString>,
+}
+
+fn get_parent_tags(conn: &mut PgConnection, tags: &[Tag]) -> QueryResult<Vec<TagParent>> {
+    let ids: Vec<_> = tags.iter().map(|tag| tag.id).collect();
+    let rows = sql_query(
+        "SELECT choice.tag_id, name.name::text AS name
+         FROM tag_parent choice
+         LEFT JOIN tag_name name ON name.tag_id = choice.parent_id AND name.\"order\" = 0
+         WHERE choice.tag_id = ANY($1)",
+    )
+    .bind::<Array<BigInt>, _>(ids)
+    .load::<ParentTagRow>(conn)?;
+    let mut parents: HashMap<_, _> = rows.into_iter().map(|row| (row.tag_id, row.name)).collect();
+    Ok(tags
+        .iter()
+        .map(|tag| match parents.remove(&tag.id) {
+            None => TagParent::Auto,
+            Some(None) => TagParent::None,
+            Some(Some(name)) => TagParent::Tag { name },
+        })
+        .collect())
 }
 
 fn get_categories(conn: &mut PgConnection, tags: &[Tag]) -> QueryResult<Vec<SmallString>> {

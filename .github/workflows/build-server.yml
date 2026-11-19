@@ -6,6 +6,7 @@ on:
       - "server/**"
 jobs:
   build-server:
+    if: github.repository == 'liamw1/oxibooru'
     name: Build server Docker container (${{ matrix.suffix }})
     runs-on: ${{ matrix.runner }}
     strategy:

@@ -18,6 +18,10 @@ where
         Self::from_u64(u64::MAX)
     }
 
+    pub const fn is_all(&self) -> bool {
+        self.value == u64::MAX
+    }
+
     const fn none() -> Self {
         Self::from_u64(0)
     }

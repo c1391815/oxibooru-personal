@@ -97,6 +97,8 @@ pub enum ApiError {
     ResourceModified,
     #[error("Cannot merge {0} with itself")]
     SelfMerge(ResourceType),
+    #[error("A tag and its display parent must have the same category")]
+    TagParentCategoryMismatch,
     StdIo(#[from] std::io::Error),
     SwfDecoding(#[from] swf::error::Error),
     TaskJoin(#[from] tokio::task::JoinError),
@@ -155,6 +157,7 @@ impl ApiError {
             | Self::PdfLoadError(_)
             | Self::SelfMerge(_)
             | Self::SwfDecoding(_)
+            | Self::TagParentCategoryMismatch
             | Self::UrlValidation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::FailedEmailTransport(_)
             | Self::FailedQuery(_)
@@ -180,6 +183,7 @@ impl ApiError {
             Self::AlreadyExists(_) => "Already Exists",
             Self::ContentTooLarge => "Content Too Large",
             Self::CyclicDependency(_) => "Cyclic Dependency",
+            Self::TagParentCategoryMismatch => "Tag Parent Category Mismatch",
             Self::DeleteDefault(_) => "Delete Default",
             Self::EmptyPdf => "Empty PDF",
             Self::EmptySwf => "Empty SWF",

@@ -947,6 +947,7 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::Request(_) => ErrorName::RequestError,
             Self::ResourceModified => ErrorName::ResourceModified,
             Self::SelfMerge(_) => ErrorName::SelfMerge,
+            Self::TagParentCategoryMismatch => ErrorName::InvalidProperty,
             Self::StdIo(err) => err.kind().kind(),
             Self::SwfDecoding(err) => err.kind(),
             Self::TaskJoin(err) => err.kind(),
