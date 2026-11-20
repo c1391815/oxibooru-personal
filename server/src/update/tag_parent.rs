@@ -86,16 +86,23 @@ mod tests {
             lock(conn)?;
             let category_id = tag_category::table.select(tag_category::id).first(conn)?;
             let make_tag = |conn: &mut diesel::PgConnection| {
-                NewTag { category_id, description: "" }
-                    .insert_into(tag::table)
-                    .returning(tag::id)
-                    .get_result::<i64>(conn)
+                NewTag {
+                    category_id,
+                    description: "",
+                }
+                .insert_into(tag::table)
+                .returning(tag::id)
+                .get_result::<i64>(conn)
             };
             let child = make_tag(conn)?;
             let parent = make_tag(conn)?;
-            NewTagName { tag_id: parent, order: 0, name: "display_parent_test" }
-                .insert_into(tag_name::table)
-                .execute(conn)?;
+            NewTagName {
+                tag_id: parent,
+                order: 0,
+                name: "display_parent_test",
+            }
+            .insert_into(tag_name::table)
+            .execute(conn)?;
             let read = |conn: &mut diesel::PgConnection, id| -> ApiResult<_> {
                 Ok(to_value(TagInfo::new_from_id(conn, id, Mask::from([Field::ParentTag]))?)?)
             };
