@@ -4,6 +4,7 @@ on:
     branches: [master]
     paths:
       - "server/**"
+      - ".github/workflows/server.yml"
   pull_request:
     branches: [master]
     paths:
@@ -24,8 +25,9 @@ jobs:
         run: sudo apt update && sudo apt install clang pkg-config libssl-dev libpq-dev libdav1d-dev libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.99.0
           components: clippy
 
       - name: Run Clippy
