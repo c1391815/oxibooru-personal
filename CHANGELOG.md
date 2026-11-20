@@ -1,5 +1,9 @@
 # Personal server changes
 
+## server-v0.9.1-personal.2
+
+- Move the display-parent migration to the personal fork's reserved range at 100022 to keep the upstream migration sequence available for future updates.
+
 ## server-v0.9.1-personal.1
 
 - Add a PostgreSQL-backed display parent with automatic, explicit and root modes.
